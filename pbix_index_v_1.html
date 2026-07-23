@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PBIx · Mapa de calor</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  :root{
+    --texto:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    --display:"Anton","Helvetica Neue",Impact,sans-serif;
+    --tinta:#1A1F35; --tinta-2:#5F6885; --linea:#C7CEE2; --panel:#F7F8FC;
+    --base:#DDE2F0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:var(--texto);background:var(--base);}
+  #map{position:absolute;inset:0;background:var(--base);}
+  .leaflet-container{font-family:var(--texto);background:var(--base)}
+  /* tiñe el mapa base hacia el azul grisáceo claro */
+  .leaflet-tile-pane{mix-blend-mode:multiply;opacity:.92;filter:saturate(.35) contrast(.95)}
+  .leaflet-control-zoom a{background:var(--panel)!important;color:var(--tinta)!important;border-color:var(--linea)!important}
+  .leaflet-control-attribution{background:rgba(247,248,252,.88)!important;color:var(--tinta-2)!important}
+  .leaflet-control-attribution a{color:var(--tinta-2)!important}
+  .box{position:absolute;z-index:500;background:rgba(247,248,252,.95);border:1px solid var(--linea);
+    box-shadow:0 2px 16px rgba(26,31,53,.18);backdrop-filter:blur(6px);color:var(--tinta)}
+  .legend{bottom:20px;left:14px;padding:12px 14px;min-width:214px;}
+  .legend .t{font-family:var(--display);font-size:16px;letter-spacing:.02em;text-transform:uppercase;margin-bottom:8px}
+  .legend .bar{height:12px;border-radius:2px;margin-bottom:5px;
+    background:linear-gradient(90deg,#00783c,#2ec85a,#b4e11e,#ffd400,#ff8c00,#e61414)}
+  .legend .ends{display:flex;justify-content:space-between;font-weight:700;font-size:11px}
+  .legend .ends.s{font-weight:400;color:var(--tinta-2);margin-top:2px}
+  .legend .sub{font-size:10.5px;color:var(--tinta-2);margin-top:7px;line-height:1.4}
+  .side{top:14px;right:14px;bottom:20px;width:250px;padding:0;display:flex;flex-direction:column}
+  .side .hd{padding:14px 16px 12px;border-bottom:1px solid var(--linea)}
+  .side .hd .t{font-family:var(--display);font-size:19px;text-transform:uppercase;letter-spacing:.02em}
+  .side .hd .s{font-size:10.5px;color:var(--tinta-2);margin-top:3px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
+  .side .list{overflow:auto;padding:6px 0}
+  .rowd{display:flex;align-items:center;gap:10px;padding:8px 16px}
+  .rowd .dot{width:10px;height:10px;border-radius:2px;flex:none}
+  .rowd .d{flex:1;font-size:12.5px;font-weight:700;line-height:1.15}
+  .rowd .d small{display:block;font-weight:400;color:var(--tinta-2);font-size:10px;margin-top:1px}
+  .rowd .v{font-family:var(--display);font-size:19px;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+  @media(max-width:760px){.side{position:static;width:auto;margin:10px}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="box legend">
+  <div class="t">Pollo a la brasa</div>
+  <div class="bar"></div>
+  <div class="ends"><span id="lmin">—</span><span id="lmax">—</span></div>
+  <div class="ends s"><span>más barato</span><span>más caro</span></div>
+  <div class="sub">Precio del pollo entero, para llevar. Superficie interpolada; no marca locales.</div>
+</div>
+
+<div class="box side">
+  <div class="hd">
+    <div class="t">Precio promedio</div>
+    <div class="s">por distrito · S/ pollo entero</div>
+  </div>
+  <div class="list" id="lista"></div>
+</div>
+
+<script>
+const DATA = [{"lat": -16.38045, "lon": -71.51893, "d": "Alto Selva Alegre", "t": "independiente", "p": 64.0}, {"lat": -16.38025, "lon": -71.52992, "d": "Alto Selva Alegre", "t": "independiente", "p": null}, {"lat": -16.37808, "lon": -71.52481, "d": "Alto Selva Alegre", "t": "independiente", "p": 63.0}, {"lat": -16.36835, "lon": -71.5263, "d": "Alto Selva Alegre", "t": "independiente", "p": 65.0}, {"lat": -16.36928, "lon": -71.52676, "d": "Alto Selva Alegre", "t": "independiente", "p": 65.0}, {"lat": -16.38045, "lon": -71.51783, "d": "Alto Selva Alegre", "t": "independiente", "p": 60.0}, {"lat": -16.3815, "lon": -71.52423, "d": "Alto Selva Alegre", "t": "independiente", "p": null}, {"lat": -16.37329, "lon": -71.5116, "d": "Alto Selva Alegre", "t": "independiente", "p": null}, {"lat": -16.3773, "lon": -71.51687, "d": "Alto Selva Alegre", "t": "independiente", "p": 60.0}, {"lat": -16.34426, "lon": -71.54073, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.38921, "lon": -71.54943, "d": "Cayma", "t": "independiente", "p": 81.9}, {"lat": -16.38953, "lon": -71.54861, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.39048, "lon": -71.54579, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.38933, "lon": -71.54898, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.32024, "lon": -71.53625, "d": "Cayma", "t": "independiente", "p": 59.0}, {"lat": -16.34478, "lon": -71.54091, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.36176, "lon": -71.5441, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.38918, "lon": -71.54828, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.35527, "lon": -71.54348, "d": "Cayma", "t": "independiente", "p": 66.0}, {"lat": -16.36139, "lon": -71.54408, "d": "Cayma", "t": "independiente", "p": null}, {"lat": -16.38923, "lon": -71.54781, "d": "Cayma", "t": "cadena", "p": null}, {"lat": -16.3905, "lon": -71.54575, "d": "Cayma", "t": "cadena", "p": null}, {"lat": -16.39089, "lon": -71.54669, "d": "Cayma", "t": "cadena", "p": null}, {"lat": -16.36301, "lon": -71.54394, "d": "Cayma", "t": "cadena", "p": 60.0}, {"lat": -16.40061, "lon": -71.53383, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.39859, "lon": -71.53895, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.40075, "lon": -71.53339, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.40681, "lon": -71.5383, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.40424, "lon": -71.53291, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.39756, "lon": -71.5359, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.39738, "lon": -71.5421, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.40528, "lon": -71.5412, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.39639, "lon": -71.53669, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.40551, "lon": -71.53198, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.40534, "lon": -71.54094, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.41445, "lon": -71.53461, "d": "Cercado", "t": "independiente", "p": null}, {"lat": -16.39373, "lon": -71.5361, "d": "Cercado", "t": "cadena", "p": null}, {"lat": -16.41077, "lon": -71.52027, "d": "Cercado", "t": "cadena", "p": null}, {"lat": -16.40437, "lon": -71.57333, "d": "Cerro Colorado", "t": "independiente", "p": 60.0}, {"lat": -16.35425, "lon": -71.56567, "d": "Cerro Colorado", "t": "independiente", "p": null}, {"lat": -16.35178, "lon": -71.56099, "d": "Cerro Colorado", "t": "independiente", "p": null}, {"lat": -16.3847, "lon": -71.57049, "d": "Cerro Colorado", "t": "independiente", "p": null}, {"lat": -16.37697, "lon": -71.55931, "d": "Cerro Colorado", "t": "independiente", "p": null}, {"lat": -16.35173, "lon": -71.56452, "d": "Cerro Colorado", "t": "independiente", "p": 62.0}, {"lat": -16.39204, "lon": -71.55503, "d": "Cerro Colorado", "t": "independiente", "p": 70.0}, {"lat": -16.3766, "lon": -71.55726, "d": "Cerro Colorado", "t": "independiente", "p": 71.0}, {"lat": -16.3849, "lon": -71.57, "d": "Cerro Colorado", "t": "independiente", "p": null}, {"lat": -16.37834, "lon": -71.57265, "d": "Cerro Colorado", "t": "independiente", "p": null}, {"lat": -16.38499, "lon": -71.57048, "d": "Cerro Colorado", "t": "independiente", "p": 67.0}, {"lat": -16.35467, "lon": -71.56631, "d": "Cerro Colorado", "t": "independiente", "p": null}, {"lat": -16.33071, "lon": -71.55601, "d": "Cerro Colorado", "t": "independiente", "p": 55.0}, {"lat": -16.37692, "lon": -71.55917, "d": "Cerro Colorado", "t": "cadena", "p": null}, {"lat": -16.37454, "lon": -71.55736, "d": "Cerro Colorado", "t": "cadena", "p": null}, {"lat": -16.46438, "lon": -71.49377, "d": "Characato", "t": "independiente", "p": 60.0}, {"lat": -16.47743, "lon": -71.49874, "d": "Characato", "t": "independiente", "p": null}, {"lat": -16.46829, "lon": -71.49471, "d": "Characato", "t": "independiente", "p": null}, {"lat": -16.47573, "lon": -71.49814, "d": "Characato", "t": "independiente", "p": null}, {"lat": -16.46412, "lon": -71.49381, "d": "Characato", "t": "independiente", "p": null}, {"lat": -16.47667, "lon": -71.49844, "d": "Characato", "t": "independiente", "p": null}, {"lat": -16.44292, "lon": -71.55571, "d": "Hunter", "t": "independiente", "p": null}, {"lat": -16.44375, "lon": -71.55614, "d": "Hunter", "t": "independiente", "p": 60.0}, {"lat": -16.42363, "lon": -71.54331, "d": "Hunter", "t": "independiente", "p": null}, {"lat": -16.45226, "lon": -71.55418, "d": "Hunter", "t": "independiente", "p": 52.0}, {"lat": -16.45001, "lon": -71.55242, "d": "Hunter", "t": "independiente", "p": null}, {"lat": -16.42383, "lon": -71.54359, "d": "Hunter", "t": "independiente", "p": null}, {"lat": -16.44827, "lon": -71.55213, "d": "Hunter", "t": "independiente", "p": 50.0}, {"lat": -16.43075, "lon": -71.53241, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": null}, {"lat": -16.41165, "lon": -71.52864, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": 66.0}, {"lat": -16.43076, "lon": -71.53243, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": null}, {"lat": -16.42724, "lon": -71.5172, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": null}, {"lat": -16.42935, "lon": -71.52404, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": 55.0}, {"lat": -16.4294, "lon": -71.52402, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": 55.0}, {"lat": -16.43014, "lon": -71.52892, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": 65.0}, {"lat": -16.43476, "lon": -71.53128, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": null}, {"lat": -16.43195, "lon": -71.52295, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": null}, {"lat": -16.42461, "lon": -71.51543, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": null}, {"lat": -16.42494, "lon": -71.52276, "d": "José Luis Bustamante y Rivero", "t": "cadena", "p": null}, {"lat": -16.42966, "lon": -71.52557, "d": "José Luis Bustamante y Rivero", "t": "cadena", "p": null}, {"lat": -16.41666, "lon": -71.52736, "d": "José Luis Bustamante y Rivero", "t": "cadena", "p": null}, {"lat": -16.40071, "lon": -71.50626, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.4068, "lon": -71.51071, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.4008, "lon": -71.50654, "d": "Mariano Melgar", "t": "independiente", "p": 66.0}, {"lat": -16.40092, "lon": -71.50643, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.40061, "lon": -71.50686, "d": "Mariano Melgar", "t": "independiente", "p": 66.0}, {"lat": -16.40086, "lon": -71.50648, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.40015, "lon": -71.50716, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.40684, "lon": -71.51058, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.40678, "lon": -71.51058, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.40327, "lon": -71.51157, "d": "Mariano Melgar", "t": "independiente", "p": 65.0}, {"lat": -16.40268, "lon": -71.51481, "d": "Mariano Melgar", "t": "independiente", "p": null}, {"lat": -16.39274, "lon": -71.51318, "d": "Miraflores", "t": "independiente", "p": null}, {"lat": -16.39036, "lon": -71.51659, "d": "Miraflores", "t": "independiente", "p": 62.5}, {"lat": -16.39382, "lon": -71.5219, "d": "Miraflores", "t": "independiente", "p": null}, {"lat": -16.39324, "lon": -71.52301, "d": "Miraflores", "t": "independiente", "p": null}, {"lat": -16.39939, "lon": -71.52147, "d": "Miraflores", "t": "independiente", "p": 62.0}, {"lat": -16.39244, "lon": -71.51432, "d": "Miraflores", "t": "independiente", "p": 65.0}, {"lat": -16.39927, "lon": -71.52168, "d": "Miraflores", "t": "cadena", "p": null}, {"lat": -16.39365, "lon": -71.52385, "d": "Miraflores", "t": "cadena", "p": null}, {"lat": -16.40049, "lon": -71.51977, "d": "Miraflores", "t": "cadena", "p": null}, {"lat": -16.41022, "lon": -71.5049, "d": "Paucarpata", "t": "independiente", "p": 58.0}, {"lat": -16.41106, "lon": -71.51295, "d": "Paucarpata", "t": "independiente", "p": null}, {"lat": -16.41628, "lon": -71.48298, "d": "Paucarpata", "t": "independiente", "p": 55.0}, {"lat": -16.41135, "lon": -71.51324, "d": "Paucarpata", "t": "independiente", "p": null}, {"lat": -16.40838, "lon": -71.48158, "d": "Paucarpata", "t": "independiente", "p": null}, {"lat": -16.43083, "lon": -71.51204, "d": "Paucarpata", "t": "independiente", "p": 60.0}, {"lat": -16.41626, "lon": -71.51061, "d": "Paucarpata", "t": "independiente", "p": null}, {"lat": -16.4213, "lon": -71.49846, "d": "Paucarpata", "t": "independiente", "p": 65.0}, {"lat": -16.42695, "lon": -71.50381, "d": "Paucarpata", "t": "independiente", "p": null}, {"lat": -16.41879, "lon": -71.50927, "d": "Paucarpata", "t": "independiente", "p": null}, {"lat": -16.41728, "lon": -71.50999, "d": "Paucarpata", "t": "cadena", "p": null}, {"lat": -16.41715, "lon": -71.51582, "d": "Paucarpata", "t": "cadena", "p": null}, {"lat": -16.41812, "lon": -71.51386, "d": "Paucarpata", "t": "cadena", "p": null}, {"lat": -16.41848, "lon": -71.514, "d": "Paucarpata", "t": "cadena", "p": null}, {"lat": -16.42383, "lon": -71.51563, "d": "Paucarpata", "t": "cadena", "p": null}, {"lat": -16.42372, "lon": -71.5652, "d": "Sachaca", "t": "independiente", "p": 65.0}, {"lat": -16.41519, "lon": -71.58089, "d": "Sachaca", "t": "independiente", "p": null}, {"lat": -16.43023, "lon": -71.56997, "d": "Sachaca", "t": "independiente", "p": null}, {"lat": -16.41681, "lon": -71.58306, "d": "Sachaca", "t": "independiente", "p": null}, {"lat": -16.44385, "lon": -71.51847, "d": "Socabaya", "t": "independiente", "p": null}, {"lat": -16.44887, "lon": -71.53313, "d": "Socabaya", "t": "independiente", "p": 62.0}, {"lat": -16.44423, "lon": -71.51837, "d": "Socabaya", "t": "independiente", "p": null}, {"lat": -16.44346, "lon": -71.51867, "d": "Socabaya", "t": "independiente", "p": 60.0}, {"lat": -16.47356, "lon": -71.52857, "d": "Socabaya", "t": "independiente", "p": 58.0}, {"lat": -16.43695, "lon": -71.53082, "d": "Socabaya", "t": "independiente", "p": null}, {"lat": -16.43967, "lon": -71.5298, "d": "Socabaya", "t": "independiente", "p": 56.0}, {"lat": -16.4386, "lon": -71.52983, "d": "Socabaya", "t": "independiente", "p": null}, {"lat": -16.47905, "lon": -71.50028, "d": "Socabaya", "t": "independiente", "p": null}, {"lat": -16.44634, "lon": -71.53052, "d": "Socabaya", "t": "independiente", "p": null}, {"lat": -16.4392, "lon": -71.52964, "d": "Socabaya", "t": "cadena", "p": null}, {"lat": -16.44895, "lon": -71.59064, "d": "Tiabaya", "t": "independiente", "p": 59.0}, {"lat": -16.44926, "lon": -71.58972, "d": "Tiabaya", "t": "independiente", "p": 60.0}, {"lat": -16.44914, "lon": -71.59094, "d": "Tiabaya", "t": "independiente", "p": 59.0}, {"lat": -16.44831, "lon": -71.59237, "d": "Tiabaya", "t": "independiente", "p": null}, {"lat": -16.44896, "lon": -71.59074, "d": "Tiabaya", "t": "independiente", "p": 60.0}, {"lat": -16.44917, "lon": -71.58955, "d": "Tiabaya", "t": "independiente", "p": null}, {"lat": -16.44845, "lon": -71.59187, "d": "Tiabaya", "t": "independiente", "p": 53.0}, {"lat": -16.44779, "lon": -71.61793, "d": "Uchumayo", "t": "independiente", "p": null}, {"lat": -16.39309, "lon": -71.544, "d": "Yanahuara", "t": "independiente", "p": 72.0}, {"lat": -16.40045, "lon": -71.55033, "d": "Yanahuara", "t": "independiente", "p": 65.0}, {"lat": -16.40128, "lon": -71.54713, "d": "Yanahuara", "t": "independiente", "p": null}, {"lat": -16.40027, "lon": -71.54991, "d": "Yanahuara", "t": "independiente", "p": null}, {"lat": -16.39291, "lon": -71.55729, "d": "Yanahuara", "t": "independiente", "p": 52.9}, {"lat": -16.40153, "lon": -71.55281, "d": "Yanahuara", "t": "independiente", "p": null}, {"lat": -16.40016, "lon": -71.5453, "d": "Yanahuara", "t": "independiente", "p": null}, {"lat": -16.39872, "lon": -71.54908, "d": "Yanahuara", "t": "independiente", "p": null}, {"lat": -16.40313, "lon": -71.54919, "d": "Yanahuara", "t": "independiente", "p": null}, {"lat": -16.40131, "lon": -71.54741, "d": "Yanahuara", "t": "independiente", "p": null}, {"lat": -16.40374, "lon": -71.54939, "d": "Yanahuara", "t": "cadena", "p": null}, {"lat": -16.39803, "lon": -71.54806, "d": "Yanahuara", "t": "cadena", "p": null}, {"lat": -16.29926, "lon": -71.62672, "d": "Yura", "t": "independiente", "p": null}, {"lat": -16.29981, "lon": -71.62553, "d": "Yura", "t": "independiente", "p": null}, {"lat": -16.29999, "lon": -71.62713, "d": "Yura", "t": "independiente", "p": null}, {"lat": -16.29848, "lon": -71.62569, "d": "Yura", "t": "independiente", "p": null}, {"lat": -16.39068, "lon": -71.54671, "d": "Yanahuara", "t": "cadena", "p": 98.7}, {"lat": -16.42494, "lon": -71.52276, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": 101.9}, {"lat": -16.40423, "lon": -71.54684, "d": "Cercado", "t": "independiente", "p": 60.0}, {"lat": -16.37454, "lon": -71.55736, "d": "Cerro Colorado", "t": "cadena", "p": 75.0}, {"lat": -16.38919, "lon": -71.54781, "d": "Cayma", "t": "cadena", "p": 83.9}, {"lat": -16.37454, "lon": -71.55736, "d": "Cerro Colorado", "t": "independiente", "p": 37.9}, {"lat": -16.38141, "lon": -71.54523, "d": "Cayma", "t": "independiente", "p": 82.65}, {"lat": -16.36301, "lon": -71.54394, "d": "Cayma", "t": "independiente", "p": 69.9}, {"lat": -16.38141, "lon": -71.54523, "d": "Cayma", "t": "independiente", "p": 91.0}, {"lat": -16.41169, "lon": -71.52869, "d": "José Luis Bustamante y Rivero", "t": "independiente", "p": 73.0}, {"lat": -16.39456, "lon": -71.52156, "d": "Miraflores", "t": "independiente", "p": 90.0}, {"lat": -16.43919, "lon": -71.52969, "d": "Cercado", "t": "independiente", "p": 83.9}, {"lat": -16.38141, "lon": -71.54523, "d": "Cayma", "t": "independiente", "p": 89.0}, {"lat": -16.38141, "lon": -71.54523, "d": "Cayma", "t": "independiente", "p": 89.3}];
+const soles=n=>'S/ '+n.toFixed(2).replace('.',',');
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+
+const map=L.map('map',{zoomControl:true,scrollWheelZoom:true,zoomAnimation:false,markerZoomAnimation:false})
+  .setView([-16.405,-71.535],12.3);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  {attribution:'© OpenStreetMap © CARTO',maxZoom:19,subdomains:'abcd'}).addTo(map);
+
+const pts_all = DATA.filter(d=>d.p!=null);
+
+function ramp(t){
+  t=Math.max(0,Math.min(1,t));
+  const s=[[0,[0,120,60]],[0.30,[46,200,90]],[0.50,[180,225,30]],
+           [0.66,[255,212,0]],[0.82,[255,140,0]],[1,[230,20,20]]];
+  for(let i=0;i<s.length-1;i++) if(t>=s[i][0]&&t<=s[i+1][0]){
+    const f=(t-s[i][0])/(s[i+1][0]-s[i][0]);
+    return s[i][1].map((c,j)=>Math.round(c+(s[i+1][1][j]-c)*f));
+  }
+  return s[s.length-1][1];
+}
+
+const Heat=L.Layer.extend({
+  onAdd(m){ this._m=m; this._c=L.DomUtil.create('canvas'); this._c.style.position='absolute';
+    m.getPanes().overlayPane.appendChild(this._c);
+    this._h=()=>{ cancelAnimationFrame(this._r); this._r=requestAnimationFrame(()=>this._draw()); };
+    m.on('moveend zoomend resize',this._h,this); this._draw(); },
+  onRemove(m){ m.getPanes().overlayPane.removeChild(this._c); m.off('moveend zoomend resize',this._h,this); },
+  _draw(){
+    const m=this._m,size=m.getSize(),tl=m.containerPointToLayerPoint([0,0]);
+    L.DomUtil.setPosition(this._c,tl); this._c.width=size.x; this._c.height=size.y;
+    const ctx=this._c.getContext('2d'); ctx.clearRect(0,0,size.x,size.y);
+    const pts=pts_all.map(d=>{const p=m.latLngToContainerPoint([d.lat,d.lon]);return{x:p.x,y:p.y,p:d.p};});
+    if(pts.length<3) return;
+    const ps=pts.map(p=>p.p),mn=Math.min(...ps),mx=Math.max(...ps);
+    const zk=Math.pow(2,m.getZoom()-12.3);
+    const D0=70*zk, R=150*zk, step=4;
+    const img=ctx.createImageData(size.x,size.y),buf=img.data;
+    for(let y=0;y<size.y;y+=step)for(let x=0;x<size.x;x+=step){
+      let num=0,den=0,near=Infinity;
+      for(const p of pts){
+        const dx=x-p.x,dy=y-p.y,d2=dx*dx+dy*dy;
+        if(d2<near)near=d2;
+        const w=1/Math.pow(d2+45,1.2); num+=w*p.p; den+=w;
+      }
+      const nd=Math.sqrt(near);
+      if(nd>R)continue;
+      let t=mx>mn?(num/den-mn)/(mx-mn):0.5; t=Math.max(0,Math.min(1,t*1.12-0.06));
+      const c=ramp(t);
+      const a=Math.round(230*(nd<=D0?1:1-(nd-D0)/(R-D0)));
+      for(let yy=y;yy<y+step&&yy<size.y;yy++)for(let xx=x;xx<x+step&&xx<size.x;xx++){
+        const i=(yy*size.x+xx)*4; buf[i]=c[0];buf[i+1]=c[1];buf[i+2]=c[2];buf[i+3]=a;
+      }
+    }
+    ctx.putImageData(img,0,0);
+    ctx.globalAlpha=.85; ctx.filter='blur(11px)'; ctx.drawImage(this._c,0,0); ctx.filter='none'; ctx.globalAlpha=1;
+    this._c.style.opacity='0.72';
+  }
+});
+new Heat().addTo(map);
+
+(function(){
+  const g={};
+  pts_all.forEach(d=>{ (g[d.d]||(g[d.d]=[])).push(d.p); });
+  const ms=Object.values(g).map(mean), mn=Math.min(...ms), mx=Math.max(...ms);
+  const rows=Object.entries(g).map(([d,a])=>[d,mean(a),a.length]).sort((a,b)=>b[1]-a[1]);
+  document.getElementById('lista').innerHTML=rows.map(([d,m,n])=>{
+    const t=mx>mn?(m-mn)/(mx-mn):.5,c=ramp(t);
+    return '<div class="rowd"><span class="dot" style="background:rgb('+c[0]+','+c[1]+','+c[2]+')"></span>'+
+      '<span class="d">'+d+'<small>'+n+' '+(n===1?'local':'locales')+'</small></span>'+
+      '<span class="v" style="color:rgb('+c[0]+','+c[1]+','+c[2]+')">'+soles(m)+'</span></div>';
+  }).join('');
+  document.getElementById('lmin').textContent=soles(Math.min(...pts_all.map(d=>d.p)));
+  document.getElementById('lmax').textContent=soles(Math.max(...pts_all.map(d=>d.p)));
+})();
+</script>
+</body>
+</html>
